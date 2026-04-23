@@ -1,16 +1,40 @@
 import os
 import io
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 import yt_dlp
 
-app = Flask(__name__)
-CORS(app) # Permite que React hable con Flask
+# Le decimos a Flask que los archivos visuales están en la carpeta 'dist'
+app = Flask(__name__, static_folder='dist', static_url_path='/')
+CORS(app)
 
-# 1. Ruta para obtener la información del video
+# --- 1. RUTAS DEL FRONTEND (LA INTERFAZ GRÁFICA) ---
+
 @app.route('/')
 def index():
-    return app.send_static_file('index.html')
+    """Sirve la página principal de la aplicación"""
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/<path:path>')
+def static_proxy(path):
+    """
+    Atrapa-todo: Permite que React cargue sus estilos (CSS), imágenes
+    y maneje la navegación interna sin que Flask arroje error 404.
+    """
+    # Si el archivo que pide el navegador existe en 'dist', lo entrega
+    if os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    # Si no existe, asume que es una ruta interna de React y recarga index.html
+    return send_from_directory(app.static_folder, 'index.html')
+
+
+# --- 2. RUTAS DEL BACKEND (LA LÓGICA DE YOUTUBE) ---
+
+@app.route('/api/info', methods=['GET'])
+def get_info():
+    video_url = request.args.get('url')
+    if not video_url:
+        return jsonify({"error": "URL no proporcionada"}), 400
 
     try:
         ydl_opts = {'quiet': True, 'extract_flat': True}
@@ -24,7 +48,7 @@ def index():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 2. Ruta para descargar el audio y enviarlo a la interfaz
+
 @app.route('/api/audio', methods=['GET'])
 def get_audio():
     video_url = request.args.get('url')
@@ -44,23 +68,20 @@ def get_audio():
             'quiet': True
         }
         
-        # Descargamos el audio usando yt-dlp
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_url])
 
-        # Leemos el archivo a la memoria y lo borramos del disco para no acumular basura
         with open(f"{audio_filename}.mp3", "rb") as f:
             data = io.BytesIO(f.read())
         os.remove(f"{audio_filename}.mp3")
 
-        # Enviamos el archivo de vuelta a React
         return send_file(data, mimetype="audio/mpeg", as_attachment=True, download_name="audio.mp3")
 
     except Exception as e:
-        # Limpieza de emergencia si algo falla
         if os.path.exists(f"{audio_filename}.mp3"):
             os.remove(f"{audio_filename}.mp3")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    # El puerto 10000 es el que configuramos en Docker
+    app.run(host='0.0.0.0', port=10000)
