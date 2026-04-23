@@ -8,11 +8,9 @@ app = Flask(__name__)
 CORS(app) # Permite que React hable con Flask
 
 # 1. Ruta para obtener la información del video
-@app.route('/api/info', methods=['GET'])
-def get_info():
-    video_url = request.args.get('url')
-    if not video_url:
-        return jsonify({"error": "URL no proporcionada"}), 400
+@app.route('/')
+def index():
+    return app.send_static_file('index.html')
 
     try:
         ydl_opts = {'quiet': True, 'extract_flat': True}
