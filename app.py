@@ -58,9 +58,10 @@ def get_audio():
     audio_filename = "temp_audio"
     try:
         ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': audio_filename,
-            'postprocessors': [{
+    'format': 'bestaudio/best',
+    'cookiefile': 'cookies.txt',  # <-- La llave maestra
+    'postprocessors': [{
+# ... (resto de tu código)
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
                 'preferredquality': '128',
