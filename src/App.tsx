@@ -75,8 +75,8 @@ export default function App() {
 
   const audioToBlob = async (videoUrl: string) => {
     try {
-      const response = await axios.get(`/api/audio?url=${encodeURIComponent(videoUrl)}`, { ... });
-        responseType: 'blob',
+      const response = await axios.get(`/api/audio?url=${encodeURIComponent(videoUrl)}`, {
+                responseType: 'blob',
         onDownloadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total!);
           if (!isNaN(percentCompleted)) {
