@@ -64,7 +64,7 @@ export default function App() {
 
   const fetchVideoInfo = async (videoUrl: string) => {
     try {
-      const response = await axios.get(`/api/info?url=${encodeURIComponent(videoUrl)}`);
+      const response = await axios.get(`http://localhost:5000/api/info?url=${encodeURIComponent(videoUrl)}`);
       setInfo(response.data);
       return response.data;
     } catch (err) {
@@ -75,7 +75,7 @@ export default function App() {
 
   const audioToBlob = async (videoUrl: string) => {
     try {
-      const response = await axios.get(`/api/audio?url=${encodeURIComponent(videoUrl)}`, {
+      const response = await axios.get(`http://localhost:5000/api/audio?url=${encodeURIComponent(videoUrl)}`, {
         responseType: 'blob',
         onDownloadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total!);
