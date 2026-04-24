@@ -69,7 +69,12 @@ def get_video_info():
     if not video_url:
         return jsonify({"error": "URL requerida"}), 400
     try:
-        ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True}
+        ydl_opts = {
+            'quiet': True, 
+            'no_warnings': True, 
+            'skip_download': True,
+            'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None
+        }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
             return jsonify({
@@ -135,6 +140,7 @@ def transcribe_video():
                 'preferredquality': '128',
             }],
             'outtmpl': audio_base,
+            'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
             'quiet': True,
             'no_warnings': True
         }
