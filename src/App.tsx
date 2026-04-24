@@ -1,476 +1,252 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useState, useRef, useEffect } from "react";
-import { 
-  Youtube, 
-  FileText, 
-  Download, 
-  Copy, 
-  Check, 
-  Loader2, 
-  AlertCircle, 
-  History, 
-  Clock, 
-  Languages,
-  ArrowRight,
-  Sparkles
-} from "lucide-react";
-import { GoogleGenAI } from "@google/genai";
-import { motion, AnimatePresence } from "motion/react";
+import React, { useState } from "react";
+import { Youtube, FileText, Download, Loader2, AlertCircle, ArrowRight, Sparkles, CheckCircle2 } from "lucide-react";
 import axios from "axios";
-import { saveAs } from "file-saver";
-import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
-
-// --- Types ---
-interface VideoInfo {
-  title: string;
-  author: string;
-  thumbnail: string;
-  lengthSeconds: string;
-}
-
-interface TranscriptionSegment {
-  timestamp: string;
-  text: string;
-}
-
-interface TranscriptionResult {
-  fullText: string;
-  segments: TranscriptionSegment[];
-  summary: string;
-}
-
-// --- Constants ---
-const GEMINI_MODEL = "gemini-3-flash-preview";
+import * as FileSaver from "file-saver";
+import { Document, Packer, Paragraph, TextRun, AlignmentType } from "docx";
 
 export default function App() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState("");
-  const [info, setInfo] = useState<VideoInfo | null>(null);
-  const [result, setResult] = useState<TranscriptionResult | null>(null);
+  const [info, setInfo] = useState<any>(null);
+  const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-
-  const validateUrl = (url: string) => {
-    const regex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
-    return regex.test(url);
-  };
-
-  const fetchVideoInfo = async (videoUrl: string) => {
-    try {
-      const response = await axios.get(`/api/info?url=${encodeURIComponent(videoUrl)}`);
-      setInfo(response.data);
-      return response.data;
-    } catch (err) {
-      console.error(err);
-      throw new Error("No se pudo obtener la información del video. Verifica el enlace.");
-    }
-  };
-
-  const audioToBlob = async (videoUrl: string) => {
-    try {
-      const response = await axios.get(`/api/audio?url=${encodeURIComponent(videoUrl)}`, {
-                responseType: 'blob',
-        onDownloadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total!);
-          if (!isNaN(percentCompleted)) {
-            setLoadingStage(`Descargando audio: ${percentCompleted}%`);
-          } else {
-            setLoadingStage(`Descargando audio...`);
-          }
-        },
-      });
-      return response.data;
-    } catch (err) {
-      console.error(err);
-      throw new Error("Error al descargar el audio del video.");
-    }
-  };
-
-  const blobToBase64 = (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = (reader.result as string).split(',')[1];
-        resolve(base64String);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  };
-
-  const transcribeWithGemini = async (base64Audio: string, mimeType: string) => {
-    setLoadingStage("Transcribiendo y traduciendo con IA...");
-    try {
-      const prompt = `
-        Transcribe este audio íntegramente al español.
-        
-        INSTRUCCIONES CRÍTICAS:
-        1. Transcribe con máxima precisión, incluyendo puntuación correcta, mayúsculas y separación en párrafos coherentes.
-        2. Si el audio está en otro idioma, TRADÚCELO al español manteniendo un tono natural y fiel al original. No uses traducción robótica.
-        3. Identifica a los hablantes si es posible (ej: Hablante 1, Hablante 2).
-        4. Agrega marcas de tiempo aproximadas al inicio de cada párrafo u cambio de tema importante.
-        5. Al final, proporciona un breve resumen (3-5 puntos clave) del contenido.
-        
-        FORMATO DE SALIDA (JSON):
-        {
-          "fullText": "Todo el texto transcrito...",
-          "segments": [
-            { "timestamp": "0:00", "text": "Texto del primer segmento..." },
-            ...
-          ],
-          "summary": "Resumen del contenido"
-        }
-      `;
-
-      const audioPart = {
-        inlineData: {
-          mimeType: "audio/mp3", // Note: Gemini is very permissive with audio formats
-          data: base64Audio,
-        },
-      };
-
-      const result = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [{ parts: [audioPart, { text: prompt }] }],
-        config: {
-          responseMimeType: "application/json",
-        }
-      });
-
-      const responseText = result.text;
-      if (!responseText) throw new Error("La IA no devolvió ninguna respuesta.");
-      
-      const parsed = JSON.parse(responseText.trim());
-      return parsed as TranscriptionResult;
-    } catch (err) {
-      console.error(err);
-      throw new Error("Error en el proceso de transcripción con IA.");
-    }
-  };
 
   const handleProcess = async () => {
-    if (!validateUrl(url)) {
-      setError("Por favor, introduce una URL de YouTube válida.");
-      return;
-    }
-
+    if (!url) return;
     setLoading(true);
     setError(null);
     setResult(null);
     setInfo(null);
-    setLoadingStage("Obteniendo información del video...");
 
     try {
-      const videoInfo = await fetchVideoInfo(url);
-      const audioBlob = await audioToBlob(url);
-      const base64Audio = await blobToBase64(audioBlob);
-      const transcription = await transcribeWithGemini(base64Audio, audioBlob.type);
-      
-      setResult(transcription);
+      setLoadingStage("Obteniendo información del video...");
+      const infoRes = await axios.get(`/api/info?url=${encodeURIComponent(url)}`);
+      setInfo(infoRes.data);
+
+      setLoadingStage("Extrayendo audio y procesando con Gemini (esto puede tardar varios minutos)...");
+      const res = await axios.get(`/api/transcribe?url=${encodeURIComponent(url)}`, {
+        timeout: 0 // Sin timeout para procesos largos
+      });
+
+      if (res.data && res.data.transcription) {
+        setResult(res.data);
+      } else {
+        throw new Error("El servidor no devolvió una transcripción válida.");
+      }
     } catch (err: any) {
-      setError(err.message || "Ocurrió un error inesperado.");
+      console.error(err);
+      setError(err.response?.data?.error || err.message || "Error de conexión con el servidor.");
     } finally {
       setLoading(false);
       setLoadingStage("");
     }
   };
 
-  const copyToClipboard = () => {
-    if (result) {
-      navigator.clipboard.writeText(result.fullText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const exportDocx = async () => {
+    if (!result || !result.transcription || !info) {
+      alert("Error: No hay datos de transcripción para generar el archivo.");
+      return;
+    }
+
+    try {
+      const doc = new Document({
+        sections: [{
+          properties: {
+            page: {
+              margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 },
+            },
+          },
+          children: [
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: "I. MUNICIPALIDAD DE HUALQUI",
+                  bold: true,
+                  size: 20,
+                  font: "Calibri",
+                }),
+              ],
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: "ACTA DE TRANSCRIPCIÓN MUNICIPAL",
+                  bold: true,
+                  size: 28,
+                  font: "Arial",
+                }),
+              ],
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 400, after: 200 },
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: info.title.toUpperCase(),
+                  bold: true,
+                  size: 22,
+                  font: "Arial",
+                  color: "475569",
+                }),
+              ],
+              alignment: AlignmentType.CENTER,
+              spacing: { after: 600 },
+            }),
+
+            ...(result.transcription || "").split("\n\n").map((text: string) =>
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: text,
+                    size: 22,
+                    font: "Arial",
+                  }),
+                ],
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { before: 120, after: 120, line: 360 },
+              })
+            ),
+
+          ],
+        }],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const fileName = `Acta_${(info.title || "Sesion").replace(/[^a-z0-9]/gi, '_').substring(0, 50)}.docx`;
+      FileSaver.saveAs(blob, fileName);
+    } catch (err) {
+      console.error("Error DOCX:", err);
+      alert("Error al generar el documento Word.");
     }
   };
 
-  const exportTxt = () => {
-    if (!result || !info) return;
-    const content = `Título: ${info.title}\nVideo: ${url}\n\nTRANSCRIPCIÓN:\n\n${result.fullText}\n\nRESUMEN:\n${result.summary}`;
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-    saveAs(blob, `${info.title.substring(0, 30)}_transcripcion.txt`);
-  };
-
-  const exportDocx = async () => {
-    if (!result || !info) return;
-    
-    const doc = new Document({
-      sections: [{
-        properties: {},
-        children: [
-          new Paragraph({
-            text: info.title,
-            heading: HeadingLevel.HEADING_1,
-          }),
-          new Paragraph({
-            children: [
-              new TextRun({ text: `Video: ${url}`, color: "555555" }),
-            ],
-          }),
-          new Paragraph({ text: "" }),
-          new Paragraph({
-            text: "Transcripción",
-            heading: HeadingLevel.HEADING_2,
-          }),
-          ...result.segments.map(seg => new Paragraph({
-            children: [
-              new TextRun({ text: `[${seg.timestamp}] `, bold: true }),
-              new TextRun({ text: seg.text }),
-            ],
-          })),
-          new Paragraph({ text: "" }),
-          new Paragraph({
-            text: "Resumen",
-            heading: HeadingLevel.HEADING_2,
-          }),
-          new Paragraph({ text: result.summary }),
-        ],
-      }],
-    });
-
-    const blob = await Packer.toBlob(doc);
-    saveAs(blob, `${info.title.substring(0, 30)}_transcripcion.docx`);
-  };
-
-  const formatSeconds = (seconds: string) => {
-    const s = parseInt(seconds);
-    const m = Math.floor(s / 60);
-    const h = Math.floor(m / 60);
-    if (h > 0) return `${h}h ${m % 60}m`;
-    return `${m}m ${s % 60}s`;
-  };
-
   return (
-    <div className="min-h-screen bg-[#FDFCFB] text-slate-900 font-sans selection:bg-orange-100 selection:text-orange-900">
-      {/* Background decoration */}
-      <div className="fixed inset-0 pointer-events-none opacity-40 overflow-hidden">
-        <div className="absolute top-[-10%] right-[-10%] w-[40vw] h-[40vw] rounded-full bg-orange-50 blur-[100px]" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[30vw] h-[30vw] rounded-full bg-blue-50 blur-[100px]" />
-      </div>
-
-      <header className="relative border-b border-slate-100 py-6 px-6 sm:px-12 bg-white/80 backdrop-blur-md sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-orange-600 p-2 rounded-xl text-white shadow-lg shadow-orange-100">
-              <Youtube size={24} />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">Transcribe Pro</h1>
-              <p className="text-[10px] uppercase tracking-widest font-semibold text-slate-400">IA de Alta Precisión</p>
-            </div>
+    <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans selection:bg-orange-100 selection:text-orange-900">
+      <div className="max-w-5xl mx-auto px-6 py-12">
+        {/* Header */}
+        <header className="text-center mb-16 space-y-4">
+          <div className="inline-flex items-center justify-center p-3 bg-gradient-to-br from-orange-500 to-orange-600 rounded-3xl shadow-xl shadow-orange-200 mb-4 animate-bounce-subtle">
+            <Sparkles className="text-white" size={32} />
           </div>
-          <div className="hidden sm:flex items-center gap-2 text-slate-500 font-medium text-sm border border-slate-200 rounded-full px-4 py-1.5 bg-slate-50">
-            <Sparkles size={14} className="text-orange-500" />
-            <span>Gemini 1.5 Flash</span>
-          </div>
-        </div>
-      </header>
+          <h1 className="text-5xl font-black tracking-tight text-slate-900">
+            Transcribe Pro <span className="text-orange-500">Hualqui</span>
+          </h1>
+          <p className="text-slate-500 font-medium text-lg">
+            Sistema Profesional de Transcripción de Sesiones Municipales
+          </p>
+        </header>
 
-      <main className="relative max-w-4xl mx-auto py-12 px-6">
-        <section className="space-y-4 text-center mb-16">
-          <motion.h2 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-4xl sm:text-5xl font-black tracking-tight text-slate-900 leading-tight"
-          >
-            Convierte cualquier video <br className="hidden sm:block" />
-            de YouTube en <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-orange-400">texto impecable</span>
-          </motion.h2>
-          <motion.p 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-slate-500 text-lg max-w-2xl mx-auto"
-          >
-            Transcripción, traducción y resumen automático al español con inteligencia artificial de última generación.
-          </motion.p>
-        </section>
-
-        <section className="bg-white rounded-3xl p-4 sm:p-8 shadow-2xl shadow-slate-200/50 border border-slate-100 relative z-10 transition-all hover:shadow-slate-200/80">
-          <div className="space-y-6">
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-orange-500 transition-colors">
-                <Youtube size={20} />
-              </div>
-              <input 
-                type="text" 
-                placeholder="Pega aquí el enlace de YouTube (ej: https://youtube.com/watch?v=...)"
-                className="w-full pl-12 pr-4 py-5 bg-slate-50 border-2 border-slate-50 rounded-2xl outline-none focus:bg-white focus:border-orange-500 transition-all text-slate-700 placeholder:text-slate-400 text-lg shadow-inner"
-                value={url}
-                onChange={(e) => {
-                  setUrl(e.target.value);
-                  setError(null);
-                }}
-                disabled={loading}
-              />
-            </div>
-
-            <button 
-              onClick={handleProcess}
-              disabled={loading || !url}
-              className="w-full py-5 bg-slate-900 text-white rounded-2xl font-bold text-lg shadow-xl hover:bg-orange-600 active:scale-[0.98] transition-all disabled:opacity-50 disabled:hover:bg-slate-900 disabled:active:scale-100 flex items-center justify-center gap-3 relative overflow-hidden group"
-            >
-              <span className="relative z-10">
-                {loading ? "Procesando video..." : "Empezar Transcripción"}
-              </span>
-              {!loading && <ArrowRight size={20} className="relative z-10 group-hover:translate-x-1 transition-transform" /> }
-              <div className="absolute inset-0 bg-gradient-to-r from-orange-600 to-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-            </button>
-
-            {loading && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                className="flex flex-col items-center gap-4 py-8 border-t border-dashed border-slate-200"
-              >
-                <div className="relative">
-                  <Loader2 className="animate-spin text-orange-500" size={48} strokeWidth={1.5} />
-                  <div className="absolute inset-0 blur-xl bg-orange-500 opacity-20 animate-pulse rounded-full" />
-                </div>
-                <p className="text-slate-500 font-medium animate-pulse">{loadingStage}</p>
-                <div className="w-full max-w-xs h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                  <motion.div 
-                    className="h-full bg-orange-500"
-                    animate={{ x: ["-100%", "100%"] }}
-                    transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+        {/* Input Card */}
+        <div className="bg-white p-2 rounded-[2.5rem] shadow-2xl shadow-slate-200/60 border border-white">
+          <div className="bg-slate-50/50 p-8 rounded-[2.2rem] border border-slate-100">
+            <div className="max-w-2xl mx-auto space-y-6">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Enlace de YouTube</label>
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none transition-colors group-focus-within:text-orange-500 text-slate-400">
+                    <Youtube size={20} />
+                  </div>
+                  <input
+                    type="text"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    className="w-full bg-white border-2 border-slate-100 rounded-2xl py-4 pl-14 pr-6 focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 outline-none transition-all text-slate-700 font-medium placeholder:text-slate-300"
                   />
                 </div>
-              </motion.div>
-            )}
+              </div>
 
-            {error && (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="p-4 bg-red-50 border border-red-100 text-red-600 rounded-2xl flex gap-3 items-start"
+              <button
+                onClick={handleProcess}
+                disabled={loading || !url}
+                className={`w-full group relative overflow-hidden rounded-2xl py-5 font-bold text-white transition-all transform active:scale-[0.98] ${loading ? 'bg-slate-400 cursor-not-allowed' : 'bg-[#0f172a] hover:bg-slate-800 shadow-xl shadow-slate-200'
+                  }`}
               >
-                <AlertCircle className="shrink-0 mt-0.5" size={18} />
-                <p className="text-sm font-medium">{error}</p>
-              </motion.div>
-            )}
+                <div className="relative flex items-center justify-center gap-3">
+                  {loading ? (
+                    <>
+                      <Loader2 className="animate-spin" size={20} />
+                      <span>{loadingStage}</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowRight className="group-hover:translate-x-1 transition-transform" size={20} />
+                      <span>Generar Transcripción Limpia</span>
+                    </>
+                  )}
+                </div>
+              </button>
+            </div>
           </div>
-        </section>
+        </div>
 
-        <AnimatePresence>
-          {info && (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6"
-            >
-              <div className="md:col-span-1">
-                <img 
-                  src={info.thumbnail} 
-                  alt={info.title} 
-                  className="w-full aspect-video object-cover rounded-2xl shadow-lg border border-slate-200"
-                />
-              </div>
-              <div className="md:col-span-2 flex flex-col justify-center gap-2">
-                <h3 className="text-xl font-bold line-clamp-2 leading-tight text-slate-800">{info.title}</h3>
-                <div className="flex flex-wrap gap-4 text-sm font-medium text-slate-400">
-                  <span className="flex items-center gap-1.5"><History size={14} /> {info.author}</span>
-                  <span className="flex items-center gap-1.5"><Clock size={14} /> {formatSeconds(info.lengthSeconds)}</span>
-                  <span className="flex items-center gap-1.5 text-orange-500"><Languages size={14} /> Traducido</span>
+        {/* Error Section */}
+        {error && (
+          <div className="mt-8 bg-red-50 border border-red-100 text-red-600 p-6 rounded-3xl flex items-center gap-4 animate-shake">
+            <AlertCircle className="shrink-0" size={24} />
+            <div>
+              <p className="font-bold text-lg">Hubo un problema</p>
+              <p className="opacity-90">{error}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Success Section */}
+        {result && (
+          <div className="mt-12 space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 px-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-green-100 p-2 rounded-full">
+                  <CheckCircle2 className="text-green-600" size={24} />
                 </div>
+                <h2 className="text-2xl font-bold text-slate-800">Acta Lista para Descarga</h2>
               </div>
-            </motion.div>
-          )}
+              <button
+                onClick={exportDocx}
+                className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-bold flex gap-3 items-center justify-center shadow-lg shadow-blue-600/30 transition-all"
+              >
+                <FileText size={20} /> Descargar Acta (.docx)
+              </button>
+            </div>
 
-          {result && (
-            <motion.div 
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-12 space-y-8"
-            >
-              <div className="flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
-                <h3 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                  <FileText className="text-orange-500" /> Resultado Final
-                </h3>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button 
-                    onClick={copyToClipboard}
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-colors"
-                  >
-                    {copied ? <Check size={16} className="text-green-600" /> : <Copy size={16} />}
-                    {copied ? "Copiado" : "Copiar Texto"}
-                  </button>
-                  <div className="flex gap-2 w-full sm:w-auto">
-                    <button 
-                      onClick={exportTxt}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-sm hover:bg-slate-800 transition-colors"
-                    >
-                      <Download size={16} /> .TXT
-                    </button>
-                    <button 
-                      onClick={exportDocx}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-orange-600 text-white rounded-xl font-bold text-sm hover:bg-orange-700 transition-colors"
-                    >
-                      <Download size={16} /> .DOCX
-                    </button>
-                  </div>
+            <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl shadow-slate-200/50">
+              <div className="flex items-center gap-4 mb-8 pb-6 border-b border-slate-50">
+                {info?.thumbnail && <img src={info.thumbnail} className="w-24 h-16 object-cover rounded-lg" alt="Thumbnail" />}
+                <div>
+                  <h3 className="font-bold text-slate-500 text-xs uppercase tracking-widest">Documento Generado</h3>
+                  <p className="font-bold text-slate-900 text-lg line-clamp-1">{info?.title}</p>
                 </div>
               </div>
 
-              {/* Transcription Area */}
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                <div className="lg:col-span-3 space-y-6">
-                  <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-100 min-h-[400px]">
-                    <div className="space-y-8">
-                      {result.segments.map((segment, idx) => (
-                        <div key={idx} className="group relative">
-                          <span className="absolute -left-[4.5rem] hidden sm:flex items-center gap-1.5 text-[11px] font-bold text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap mt-1">
-                            <Clock size={10} /> {segment.timestamp}
-                          </span>
-                          <div className="space-y-2">
-                            <span className="sm:hidden text-[10px] font-bold text-orange-400 flex items-center gap-1">
-                              <Clock size={10} /> {segment.timestamp}
-                            </span>
-                            <p className="text-slate-700 leading-relaxed text-lg font-medium whitespace-pre-wrap">
-                              {segment.text}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Summary Sidebar */}
-                <div className="lg:col-span-1 space-y-6">
-                  <div className="bg-orange-50 border border-orange-100 rounded-3xl p-6 sticky top-28">
-                    <h4 className="font-black text-orange-900 uppercase text-xs tracking-widest mb-4 flex items-center gap-2">
-                      <Sparkles size={14} /> Resumen Ejecutivo
-                    </h4>
-                    <p className="text-orange-800 text-sm leading-relaxed font-medium">
-                      {result.summary}
-                    </p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-100 rounded-3xl p-6">
-                    <h4 className="font-black text-slate-500 uppercase text-xs tracking-widest mb-4">Detalles Técnicos</h4>
-                    <ul className="space-y-3 text-xs font-bold text-slate-400">
-                      <li className="flex justify-between"><span>Modelo:</span> <span className="text-slate-600">Flash 1.5</span></li>
-                      <li className="flex justify-between"><span>Idioma:</span> <span className="text-slate-600">Español</span></li>
-                      <li className="flex justify-between"><span>Precisión:</span> <span className="text-slate-600">98.5% *</span></li>
-                    </ul>
-                  </div>
-                </div>
+              <div className="max-h-[500px] overflow-y-auto pr-4 scrollbar-thin scrollbar-thumb-slate-200">
+                <p className="whitespace-pre-wrap text-slate-600 leading-[1.8] text-lg font-medium">
+                  {result.transcription}
+                </p>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </main>
+            </div>
+          </div>
+        )}
 
-      <footer className="max-w-6xl mx-auto py-12 px-6 mt-12 border-t border-slate-100 text-center">
-        <p className="text-slate-400 text-sm font-medium">
-          Generado con ❤️ Pro Transcribe & Gemini AI. Todos los textos en español.
-        </p>
-      </footer>
+        {/* Info Grid */}
+        {!result && !loading && (
+          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              { icon: Sparkles, title: "IA de Vanguardia", desc: "Uso de Gemini 1.5 Flash para transcripciones precisas." },
+              { icon: FileText, title: "Formato Oficial", desc: "Generación de documentos Word para la Municipalidad." },
+              { icon: CheckCircle2, title: "Filtro Inteligente", desc: "Elimina marcas de tiempo y etiquetas automáticamente." },
+            ].map((item, i) => (
+              <div key={i} className="p-6 bg-white rounded-[2rem] border border-slate-100 text-center space-y-3">
+                <div className="mx-auto w-10 h-10 bg-orange-50 rounded-full flex items-center justify-center">
+                  <item.icon className="text-orange-500" size={20} />
+                </div>
+                <h4 className="font-bold text-slate-800">{item.title}</h4>
+                <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,8 +1,25 @@
+# Dependencias
 node_modules/
-build/
+__pycache__/
+*.pyc
+
+# Entorno y Secretos
+.env
+.env.local
+.env.*.local
+
+# Binarios pesados de Windows (No necesarios en la nube)
+ffmpeg.exe
+ffprobe.exe
+*.mp3
+temp_audio/
 dist/
-coverage/
+
+# Firebase
+.firebase/
+.firebaserc
+
+# Otros
 .DS_Store
-*.log
-.env*
-!.env.example
+.vscode/
+.idea/

@@ -10,7 +10,7 @@ RUN npm run build
 FROM python:3.11-slim
 WORKDIR /app
 
-# Instalar FFmpeg (vital para YouTube)
+# Instalar FFmpeg (vital para audio en Linux)
 RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 
 # Copiar dependencias de Python
@@ -21,5 +21,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY --from=frontend-builder /app/dist ./dist
 COPY app.py .
 
-# Comando para iniciar la aplicación con Gunicorn (más estable que Flask puro)
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "app:app"]
+# Comando para iniciar la aplicación con Gunicorn (Producción)
+CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--timeout", "600", "app:app"]

@@ -1,6 +1,7 @@
 flask
 flask-cors
 yt-dlp
-google-generativeai
+google-genai
 python-dotenv
+firebase-admin
 gunicorn
